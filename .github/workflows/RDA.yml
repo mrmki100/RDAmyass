@@ -1,0 +1,80 @@
+name: Remote Desktop
+
+on:
+  workflow_dispatch:
+
+jobs:
+  rdp:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+
+    steps:
+      - name: Update system
+        run: |
+          sudo apt update
+
+      - name: Install Desktop Environment
+        run: |
+          sudo DEBIAN_FRONTEND=noninteractive apt install -y \
+          xfce4 \
+          xfce4-goodies \
+          dbus-x11 \
+          x11-xserver-utils
+
+      - name: Install VNC Server
+        run: |
+          sudo apt install -y tightvncserver
+
+      - name: Install Browser
+        run: |
+          sudo apt install -y firefox
+
+      - name: Install noVNC
+        run: |
+          git clone https://github.com/novnc/noVNC.git
+          git clone https://github.com/novnc/websockify.git noVNC/utils/websockify
+
+      - name: Configure VNC
+        run: |
+          mkdir -p ~/.vnc
+
+          echo "123456" | vncpasswd -f > ~/.vnc/passwd
+          chmod 600 ~/.vnc/passwd
+
+          cat <<EOF > ~/.vnc/xstartup
+          #!/bin/bash
+          xrdb \$HOME/.Xresources
+          startxfce4 &
+          EOF
+
+          chmod +x ~/.vnc/xstartup
+
+      - name: Start VNC Server
+        run: |
+          vncserver :1 -geometry 1280x720 -depth 24
+
+      - name: Start noVNC
+        run: |
+          nohup noVNC/utils/novnc_proxy --vnc localhost:5901 --listen 6080 &
+
+      - name: Install cloudflared
+        run: |
+          wget https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64
+          chmod +x cloudflared-linux-amd64
+          sudo mv cloudflared-linux-amd64 /usr/local/bin/cloudflared
+
+      - name: Start Cloudflare Tunnel
+        run: |
+          cloudflared tunnel --url http://localhost:6080 > tunnel.log 2>&1 &
+
+          sleep 15
+
+          echo "Tunnel URL:"
+          cat tunnel.log | grep trycloudflare
+
+      - name: Keep Alive
+        run: |
+          echo "Remote desktop is running..."
+          while true; do
+            sleep 300
+          done
